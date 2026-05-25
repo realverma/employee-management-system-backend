@@ -1,159 +1,185 @@
-# Employee Management System - Backend
+# Employee Management System - Backend & Workforce Engine
 
-The Employee Management System (EMS) backend is a RESTful API developed using Spring Boot. It provides CRUD operations for managing employee data, including features to create, read, update, and delete employee records. The API is designed to be easily integrated with a frontend and is CORS-enabled to allow requests from specified domains.
+An enterprise-grade RESTful API developed using Java 17 and Spring Boot, specifically tailored for managing shift-based, overtime-heavy blue-collar workforces in the construction industry. This system tracks real-time site attendance, calculates tiered overtime wages under a monthly cap, processes atomic payroll settlements, and incorporates robust fault-tolerant backend architectures.
 
+---
 ## Table of Contents
 
+- [Info](#info)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Setup Instructions](#setup-instructions)
-- [API Endpoints](#api-endpoints)
 - [Environment Variables](#environment-variables)
+- [API Endpoints](#api-endpoints)
 
-## Features
 
-- **Create** an employee
-- **Retrieve** a list of all employees
-- **Retrieve** a single employee by ID
-- **Update** an employee's information
-- **Delete** an employee
 
-## Tech Stack
 
-- **Java** - Programming language
-- **Spring Boot** - Application framework
-- **Spring Data JPA** - For ORM and database interactions
-- **PostgreSQL** - Database
-- **Docker** - Containerization
+## 🛠️ Recruitment Assignment Metadata
 
-## Setup Instructions
+### 1. Forked Repository Context
+- **HRMS Forked:** [employee-management-system-backend)](https://github.com/harsh-1806/employee-management-system-backend)
+- **Why this repo:** It provided a clean, lightweight Spring Boot + JPA configuration with basic worker entities, already built on Java 17 and Spring Boot 3.x 
+
+### 2. AI Tool Utilization Transparency
+- **Gemini:** Used to generate entities, services, DTOs, controllers.
+- **ChatGPT:** Used to create configs, sql queries for database, bug fixing.
+
+### 3. Core Architectural Decisions & Trade-offs
+- **Schema Constraints vs. App-Layer Validation:** Rather than relying solely on Java validation, strict constraints like unique structural composite indexes and database-level checks (`clock_out_time > clock_in_time`) were enforced. This ensures data integrity even if parallel threads attempt race-condition clock-ins.
+- **Redis Hash-Map Structure for Real-Time State:** Active workers are stored in Redis as individual hashes prefixed by `active_worker:`. This provides $O(1)$ fast lookups for site supervisors standing on-site, completely isolating high-frequency dashboard traffic from hitting the core Supabase PostgreSQL instance.
+- **Asynchronous & Decoupled Side Effects:** To comply with Ticket LF-204, notification tracking is completely abstracted away from the database transaction lifecycle. SMS notifications are emitted as decoupled internal Spring Events, bound to a transaction lifecycle, ensuring an employee never receives a premature settlement notification on a rolled-back execution path.
+- **Future Improvements with More Time:** Given more time, I would replace synchronous REST calls to external government systems with asynchronous reactive pooling (`WebClient` with custom thread isolations) and implement a scheduled dead-letter queue (DLQ) batch processor to automatically flag and eject active worker instances lingering in Redis past the 16-hour system threshold.
+
+---
+
+## 🚀 Local Setup Instructions
+
+This application is built with Java 17+, Spring Boot, Supabase (PostgreSQL), and Redis.
 
 ### Prerequisites
+- **Java 17** or later installed
+- **Maven 3.x** installed
+- **Redis Server** (Running locally on `localhost:6379` or an accessible remote instance)
+- A free **Supabase Account** ([supabase.com](https://supabase.com))
 
-- **Java 17** or later
-- **Maven** (to build the project)
-- **PostgreSQL** (or a compatible database)
-- **Docker** (optional, for containerization)
+### 1. Database Setup (Supabase Integration)
+1. Log into your **Supabase Dashboard** and create a new project.
+2. Navigate to **Project Settings -> Database**.
+3. Under the **Connection String** section, copy the **URI** string (ensure it uses port `6543` for connection pooling/PgBouncer to prevent connection exhaustion as requested in LF-205).
+4. Keep your project database password ready for environment mapping.
 
-### Running Locally
+### 2. System Environment Variable Setup
+To prevent security leaks, database credentials and cache profiles must not be hardcoded inside `application.yml`. Configure your local terminal environment with these exact keys before launching the app:
 
-1. **Clone the repository**
+#### On Linux/macOS:
+```bash
+export DB_USERNAME="postgres.your-supabase-project-id"
+export DB_PASSWORD="your-secure-supabase-password"
+export DB_HOST="hostname"
+export DB_PORT="Port number"
 
-   ```bash
-   git clone https://github.com/yourusername/employee-management-system-backend.git
-   cd employee-management-system-backend
-   ```
+#### On Windows:
 
-2. **Set up PostgreSQL Database**
+$env:DB_USERNAME="postgres.your-supabase-project-id"
+$env:DB_PASSWORD="your-secure-supabase-password"
+$env:DB_HOST="hostname"
+$env:DB_PORT="Port number"
 
-   Ensure PostgreSQL is installed and running. Create a new database for the project:
+### 3. Run the Application
+Compile the binaries and execute the Spring Boot application profile using the Maven wrapper:
 
-   ```sql
-   CREATE DATABASE employee_db;
-   ```
+Bash
+mvn clean install
+mvn spring-boot:run
 
-3. **Configure Application Properties**
+### 4. 🧭 Core REST API Reference
+All requests must pass standard payload validation schemas. Faulty requests or domain violations return structured JSON errors.
 
-   Update `src/main/resources/application.yml` with your database credentials:
+Part 1: Worker Attendance Tracker
+1. Clock-In Worker
+Endpoint: POST /api/attendance/clock-in
 
-   ```yaml
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:employee_db}
-    username: ${POSTGRES_USER:root}
-    password: ${POSTGRES_PASSWORD:password}
-   ```
+Payload:
 
-4. **Build the Application**
+JSON
+{
+  "workerId": 1,
+  "siteId": 101
+}
+Response (200 OK):
 
-   ```bash
-   mvn clean install
-   ```
+JSON
+{ "message": "Clock-in successful." }
+2. Clock-Out Worker
+Endpoint: POST /api/attendance/clock-out
 
-5. **Run the Application**
+Payload:
 
-   ```bash
-   java -jar target/employee-system-backend-0.0.1-SNAPSHOT.jar
-   ```
+JSON
+{ "workerId": 1 }
+Response (200 OK):
 
-   The server will start on `http://localhost:8080`.
+JSON
+{ "message": "Clock-out registered successfully." }
+3. Real-Time Active Worker Cache (Served Exclusively from Redis)
+Endpoint: GET /api/attendance/active
 
-### Docker Setup
+Response (200 OK):
 
-1. **Build the Docker Image**
-
-   ```bash
-   docker build -t employee-system-backend .
-   ```
-
-2. **Run the Docker Container**
-
-   ```bash
-   docker run -p 8080:8080 employee-system-backend
-   ```
-
-   The application will be available at `http://localhost:8080`.
-
-## API Endpoints
-
-The API follows RESTful conventions with the following endpoints:
-
-| Method | Endpoint                 | Description                        |
-|--------|---------------------------|------------------------------------|
-| POST   | `/api/v1/employees`       | Create a new employee              |
-| GET    | `/api/v1/employees`       | Retrieve all employees             |
-| GET    | `/api/v1/employees/{id}`  | Retrieve an employee by ID         |
-| PUT    | `/api/v1/employees/{id}`  | Update an employee's details       |
-| DELETE | `/api/v1/employees/{id}`  | Delete an employee by ID           |
-
-### Example Request and Response
-
-#### Create an Employee
-
-- **Request**
-
-  ```http
-  POST /api/v1/employees
-  Content-Type: application/json
-
+JSON
+[
   {
-    "firstName": "John",
-    "lastName": "Doe",
-    "emailId": "johndoe@example.com"
+    "workerId": 1,
+    "workerName": "Ramesh Kumar",
+    "siteId": 101,
+    "siteName": "Greenfield Phase 2",
+    "clockInTime": "2026-05-26T08:00:00"
   }
-  ```
+]
+4. Historical Paginated Logs
+Endpoint: GET /api/attendance/log?workerId=1&from=2026-05-01T00:00:00&to=2026-05-31T23:59:59&page=0&size=10
 
-- **Response**
+Response (200 OK):
 
-  ```json
-  {
-    "id": 1,
-    "firstName": "John",
-    "lastName": "Doe",
-    "emailId": "johndoe@example.com"
-  }
-  ```
+JSON
+{
+  "content": [
+    {
+      "attendanceId": 452,
+      "workerName": "Ramesh Kumar",
+      "siteName": "Greenfield Phase 2",
+      "clockInTime": "2026-05-25T08:00:00",
+      "clockOutTime": "2026-05-25T18:00:00",
+      "totalHours": 10.00,
+      "overtimeHours": 2.00,
+      "isFlagged": false
+    }
+  ],
+  "currentPage": 0,
+  "totalElements": 1,
+  "totalPages": 1
+}
+Part 2: Overtime Calculation & Settlements
+5. Fetch Monthly Payroll Summary
+Endpoint: GET /api/overtime/summary/1?month=2026-04
 
-## Environment Variables
+Response (200 OK):
 
-You can define the following environment variables in an `.env` file for Docker:
+JSON
+{
+  "workerId": 1,
+  "month": "2026-04",
+  "totalOvertimeHours": 12.50,
+  "totalPayoutAmount": 3450.00,
+  "breakdown": [
+    {
+      "date": "2026-04-12",
+      "hours": 2.50,
+      "rateApplied": 150.00,
+      "amount": 525.00,
+      "status": "PENDING"
+    }
+  ]
+}
+6. Execute Monthly Settlement (Atomic Transaction Block)
+Endpoint: POST /api/overtime/settle/1?month=2026-04
 
-```dotenv
-      POSTGRES_HOST: 'localhost'
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: employee_db
-      POSTGRES_USER: 'root'
-      POSTGRES_PASSWORD: 'password'
-```
+Response (200 OK):
 
-## CORS Configuration
+JSON
+{
+  "message": "Overtime settled successfully.",
+  "totalSettledAmount": 3450.00,
+  "entriesSettled": 5
+}
+🛑 Global Structured Error Response Matrix
+When business rules or data constraints are breached, endpoints gracefully return descriptive JSON schemas instead of structural trace stack logs:
 
-CORS is enabled for the frontend URLs specified in the `EmployeeController`:
-
-```java
-@CrossOrigin(origins = {"http://localhost:5173", "https://employee-management-system-frontend-hazel.vercel.app/"})
-```
-
-To add more origins, modify the `origins` attribute in `@CrossOrigin`.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+JSON
+{
+  "error": "INVALID_SETTLEMENT",
+  "message": "Cannot settle current or future months.",
+  "timestamp": "2026-05-26T12:05:00Z"
+}
+📄
