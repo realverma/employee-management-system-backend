@@ -4,6 +4,12 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 25
+      minimum-idle: 5
+      idle-timeout: 30000
+      max-lifetime: 240000 # Closes links before cloud/Supabase gateway firewalls drop them
+      keepalive-time: 30000
   jpa:
     show-sql: false
     hibernate:
