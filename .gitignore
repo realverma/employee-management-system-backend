@@ -5,6 +5,11 @@ target/
 !**/src/test/**/target/
 compose.yaml
 
+.env
+.env.local
+.env.staging
+.env.prod
+
 ### STS ###
 .apt_generated
 .classpath
